@@ -511,6 +511,8 @@ def login(driver, rut, password, sm, auto=False, curso_id=None):
     return False, None
 
 def _escojer_curso_select(opts, auto, curso_id, intento):
+    """Selecciona curso desde un <select> HTML.
+    Prioridad: --curso ID > --auto/reintento > input interactivo."""
     if curso_id:
         for o in opts:
             if o.get_attribute("value") == str(curso_id):
@@ -528,6 +530,8 @@ def _escojer_curso_select(opts, auto, curso_id, intento):
         return opts[0]
 
 def _escojer_curso_li(enlaces, auto, curso_id, intento):
+    """Selecciona curso desde lista de <li> con enlaces.
+    Prioridad: --curso ID por substring > --auto/reintento > input interactivo."""
     datos = [(e.get_attribute("href"), e.text.strip()) for e in enlaces]
     if curso_id:
         for e in enlaces:
@@ -872,6 +876,9 @@ def escanear_curso(driver, curso_url, sm):
 # =============================================================================
 
 def guardar_links(links):
+    """Guarda las URLs .webm en links_grabacion.txt.
+    Ordena alfabeticamente, elimina duplicados y escribe
+    encabezado con timestamp y total."""
     webm = sorted(set(l for l in links if l.endswith(".webm")))
     try:
         with open(LINKS_FILE, "w", encoding="utf-8") as f:

@@ -201,16 +201,19 @@ def _detectar_streams(ruta):
 
 
 def fusionar(carpeta, num, codec, force):
-    """Fusiona deskshare.webm (v) + webcams.webm (a) -> fusionado_NUM.webm.
+    """Fusiona deskshare.webm + webcams.webm -> fusionado_NUM.webm.
 
-    Detecta los streams de cada archivo con ffprobe y construye
-    el mapeo de ffmpeg dinamicamente para adaptarse a cualquier
-    combinacion de pistas de video/audio.
+    Usa mapping fijo con sufijo '?' para que ffmpeg no falle si
+    deskshare no tiene video o webcams no tiene audio:
+      ffmpeg -map 0:v? -map 1:a? -c:v copy -c:a CODEC
 
-    Para resistir cortes inesperados, primero escribe a un archivo temporal
-    (.tmp) y solo lo renombra a .webm si ffmpeg termina exitosamente.
-    Si el programa se cierra a medio fusionar, el .tmp queda ignorado y
-    al reiniciar se volvera a fusionar esa carpeta desde cero.
+    _detectar_streams se ejecuta solo como informacion visual
+    (no condiciona el comando).
+
+    Para resistir cortes inesperados, primero escribe a un archivo
+    temporal (_temp.webm) y solo lo renombra a .webm si ffmpeg
+    termina exitosamente. Si el programa se cierra a medio fusionar,
+    el _temp.webm queda ignorado y al reiniciar se vuelve a fusionar.
     """
     deskshare = carpeta / 'deskshare.webm'
     webcams = carpeta / 'webcams.webm'
@@ -231,54 +234,41 @@ def fusionar(carpeta, num, codec, force):
     if temporal.is_file():
         temporal.unlink()
 
-    # Verificar que los archivos tengan contenido minimo
     if deskshare.stat().st_size < 1024:
-        print(f"  [SKIP] {carpeta.name}: deskshare.webm esta vacio o corrupto ({deskshare.stat().st_size} bytes)")
+        print(f"  [SKIP] {carpeta.name}: deskshare.webm vacio ({deskshare.stat().st_size} bytes)")
         return False
     if webcams.stat().st_size < 1024:
-        print(f"  [SKIP] {carpeta.name}: webcams.webm esta vacio o corrupto ({webcams.stat().st_size} bytes)")
+        print(f"  [SKIP] {carpeta.name}: webcams.webm vacio ({webcams.stat().st_size} bytes)")
         return False
 
-    # Detectar streams disponibles en cada archivo
+    # Info de los streams (solo informativo, no condiciona el mapping)
     ds = _detectar_streams(deskshare)
     wc = _detectar_streams(webcams)
-
-    # Mostrar informacion de los archivos fuente
     ds_v = ', '.join(ds['v']) if ds['v'] else '(sin video)'
     wc_a = ', '.join(wc['a']) if wc['a'] else '(sin audio)'
     print(f"  [INFO] deskshare: video={ds_v}  |  webcams: audio={wc_a}")
 
-    # Construir el comando ffmpeg dinamicamente:
-    #   - Video: del deskshare (si tiene video)
-    #   - Audio: del webcams (si tiene audio)
-    #   - Si falta alguno, se omite ese mapeo con '?'
-    cmd = ['ffmpeg', '-y']
-    cmd += ['-i', str(deskshare)]
-    cmd += ['-i', str(webcams)]
-    if ds['v']:
-        cmd += ['-map', '0:v']
-    if wc['a']:
-        cmd += ['-map', '1:a']
-    if ds['v']:
-        cmd += ['-c:v', 'copy']
-    if wc['a']:
-        cmd += ['-c:a', codec]
-    cmd.append(str(temporal))
+    cmd = [
+        'ffmpeg', '-y',
+        '-i', str(deskshare),
+        '-i', str(webcams),
+        '-map', '0:v?',
+        '-map', '1:a?',
+        '-c:v', 'copy',
+        '-c:a', codec,
+        str(temporal),
+    ]
 
     print(f"  [FFMPEG] {carpeta.name} -> {salida.name}  (codec audio: {codec})")
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode == 0:
-            # Solo si ffmpeg termino bien, renombramos .tmp -> .webm
-            # Usamos os.replace en vez de Path.rename porque en Windows
-            # rename falla si el destino ya existe; replace lo sobrescribe
             os.replace(temporal, salida)
             print(f"     [OK] {salida}")
             return True
         else:
             err = r.stderr.strip()
             print(f"     [ERR] ffmpeg fallo (codigo {r.returncode})")
-            # Mostrar las ultimas lineas del error (lo mas relevante)
             lineas = err.split('\n')
             relevantes = [l for l in lineas if 'error' in l.lower() or 'invalid' in l.lower() or 'unknown' in l.lower()]
             if relevantes:
@@ -289,8 +279,8 @@ def fusionar(carpeta, num, codec, force):
             if temporal.is_file():
                 temporal.unlink()
             return False
-    except subprocess.TimeoutExpired:
-        print("     [ERR] Tiempo de espera agotado (5 min)")
+    except Exception as e:
+        print(f"     [ERR] Excepcion en ffmpeg: {e}")
         if temporal.is_file():
             temporal.unlink()
         return False

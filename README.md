@@ -202,15 +202,17 @@ En Windows y macOS (sin brew) los binarios se guardan en `bin/` junto al script 
 
 ### ¿Cómo funciona?
 
-1. Busca subcarpetas que coincidan con `grabacion_NNN/` dentro del directorio base
-2. Para cada una, verifica que existan `deskshare.webm` y `webcams.webm`
-3. Ejecuta `ffmpeg` con `-map 0:v -map 1:a`: toma la pista de video del primer archivo (deskshare) y la pista de audio del segundo (webcams), las copia sin recodificar video y recodifica el audio al códec elegido
-4. Guarda el resultado como `fusionado_NNN.webm` dentro de la misma carpeta
+1. Verifica que `ffmpeg` esté instalado; si no, lo descarga automáticamente (Windows: ZIP portable gyan.dev, macOS: brew o binario estático, Linux: apt/pacman/dnf)
+2. Busca subcarpetas que coincidan con `grabacion_NNN/` dentro del directorio base
+3. Para cada una, verifica que existan `deskshare.webm` y `webcams.webm` con contenido mínimo
+4. Detecta los streams de cada archivo con `ffprobe` y los muestra como información (sin condicionar el comando)
+5. Ejecuta `ffmpeg` con `-map 0:v? -map 1:a?`: toma la pista de video del primer archivo (deskshare) y la pista de audio del segundo (webcams); el sufijo `?` evita errores si alguna pista no existe
+6. Escribe primero a un archivo temporal `fusionado_NNN_temp.webm`; solo si ffmpeg termina exitosamente lo renombra a `fusionado_NNN.webm`, evitando archivos corruptos si el programa se cierra a medio fusionar
 
 Comando interno:
 
 ```
-ffmpeg -y -i deskshare.webm -i webcams.webm -map 0:v -map 1:a -c:v copy -c:a libopus fusionado_001.webm
+ffmpeg -y -i deskshare.webm -i webcams.webm -map 0:v? -map 1:a? -c:v copy -c:a libopus fusionado_001_temp.webm
 ```
 
 ### Ejemplos
